@@ -1,6 +1,6 @@
 'use strict';
 
-const { readFileSync, writeFileSync } = require('fs');
+const { readFileSync } = require('fs');
 const { resolve } = require('path');
 
 const src = readFileSync(resolve(__dirname, '../src/file.ts'), 'utf8');
@@ -8,24 +8,6 @@ const lines = src.split('\n');
 
 const errors = [];
 const warnings = [];
-
-// ── Stamp the real compile time into the freshly-built dist bundle ────────────────────────
-//
-// src/file.ts declares `const BUILD_TIME = '__BUILD_TIME__';` as a placeholder. `tsc` just
-// copied that literal string into dist/file.js — replace it here, now that we know an actual
-// compile just happened, so the app can show when it was last built. A no-op if the bundle's
-// already been stamped (e.g. this script re-run without a fresh `tsc` in between).
-{
-    const distPath = resolve(__dirname, '../dist/file.js');
-    try {
-        const distSrc = readFileSync(distPath, 'utf8');
-        if (distSrc.includes('__BUILD_TIME__')) {
-            writeFileSync(distPath, distSrc.replace(/__BUILD_TIME__/g, new Date().toISOString()));
-        }
-    } catch (err) {
-        console.error(`Could not stamp build time into dist/file.js: ${err.message}`);
-    }
-}
 
 // ── Check 0: unlockAudioContext() must prime the actual shared alarm audio element ────────
 //
@@ -297,7 +279,7 @@ const factoryType = {};
     const eBlock = src.match(/export const e = \{([\s\S]*?)\n\};/);
     if (eBlock) {
         for (const m of eBlock[1].matchAll(/(\w+):\s*\([^)]*\)\s*=>\s*new (\w+)\((?:'([^']+)')?/g)) {
-            const type = (m[3] || (m[2] === 'NuwaveEquipment' ? 'Nuwave pan' : m[1])).toLowerCase();
+            const type = (m[3] || m[1]).toLowerCase();
             factoryType[m[1]] = type;
             equipmentWords.add(type);
         }
@@ -578,7 +560,7 @@ const OIL_SMOKE_POINTS = {
 
         // Only flag oils used on a direct-heat pan surface — var must be *assigned*
         // here (`const v = e.pan(...)`), not merely mentioned in step text.
-        if (!/const\s+\w+\s*=\s*e\.(?:pan|nuwavePan)\(/.test(block)) continue;
+        if (!/const\s+\w+\s*=\s*e\.pan\(/.test(block)) continue;
 
         const usedOils = Object.keys(OIL_SMOKE_POINTS).filter(
             (key) => new RegExp(`\\bi\\.${key}\\(`).test(block)
