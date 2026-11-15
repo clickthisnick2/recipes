@@ -522,7 +522,11 @@ class Equipment {
         });
     }
 }
-class NuwaveEquipment extends Equipment {
+// The one stovetop pan. Every recipe pan is this NuWave induction pan.
+// A label overrides the displayed name (granola's 8×8, the panko pan, the test pan)
+// without changing preheat timings. Instances stay separate so contents and the
+// preheat target do not leak between recipes.
+class Pan extends Equipment {
     constructor(label) { super('Nuwave pan', label); }
     preheat(temperature) {
         this._targetTemp = temperature;
@@ -532,7 +536,7 @@ class NuwaveEquipment extends Equipment {
 }
 export const e = {
     bowl: (label) => new Equipment('bowl', label),
-    pan: (label) => new Equipment('pan', label),
+    pan: (label) => new Pan(label),
     pot: (label) => new Equipment('pot', label),
     oven: (label) => new Equipment('oven', label),
     toasterOven: (label) => new Equipment('toaster oven', label),
@@ -544,7 +548,6 @@ export const e = {
     colander: (label) => new Equipment('colander', label),
     platter: (label) => new Equipment('platter', label),
     kettle: (label) => new Equipment('tea kettle', label),
-    nuwavePan: (label) => new NuwaveEquipment(label),
     glass: (label) => new Equipment('glass', label),
     siliconeBag: (label) => new Equipment('silicone bag', label),
 };
@@ -683,6 +686,8 @@ function recipeCookSeconds(recipe) {
     }
     let totalTime = 0;
     for (const step of recipe.steps) {
+        if (step.prepOnly)
+            continue;
         if (step.type !== 'timer' && step.type !== 'gate')
             continue;
         const keys = claimKeysForStep(step);
@@ -1188,7 +1193,6 @@ function renderRecipeList() {
         empty.className = 'empty';
         root.appendChild(empty);
         appendAddIngredientButton(root);
-        appendBuildFooter(root);
         return;
     }
     if (state.bundles.size > 0 && !state.searchQuery) {
@@ -1314,7 +1318,6 @@ function renderRecipeList() {
         });
     });
     appendAddIngredientButton(root);
-    appendBuildFooter(root);
 }
 function appendAddIngredientButton(root) {
     const addRow = document.createElement('div');
@@ -3307,6 +3310,7 @@ button, a, input, select { touch-action: manipulation; }
 /* Block pinch-zoom gestures page-wide (belt-and-suspenders alongside the viewport meta
    tag's maximum-scale/user-scalable, which some iOS versions/accessibility settings can
    partially override) - still allow normal scrolling in both directions. */
+html { color-scheme: dark; }
 html, body { touch-action: pan-x pan-y; }
 
 body {
@@ -3579,7 +3583,6 @@ h1, h2 { margin-top: 0; font-size: 28px; }
 .info-step-collapsed .info-step-body { display: none; }
 
 #recipe-list { padding-bottom: 120px; }
-.build-footer { margin-top: 24px; text-align: center; font-size: 12px; color: #666; }
 
 .panel {
     border: 2px solid #444; border-radius: 12px; padding: 20px; margin: 10px 0;
@@ -3603,7 +3606,9 @@ h1, h2 { margin-top: 0; font-size: 28px; }
 .panel.completed { background: #1a5c2a; color: white; border-color: #2d9e4a; }
 .panel.skipped   { background: #374151; color: #9ca3af; border-color: #4b5563; text-decoration: line-through; }
 
-.panel.ringing { background: #7f1d1d; color: white; border-color: #ef4444; animation: alarmPulse 1s ease-in-out infinite; }
+.panel.ringing { background: #7f1d1d; color: white; border-color: #ef4444;
+    @media (prefers-reduced-motion: no-preference) { animation: alarmPulse 1s ease-in-out infinite; }
+}
 @keyframes alarmPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.65; } }
 .ringing-label { font-weight: 600; }
 .ringing-countdown { margin-top: 6px; font-size: 15px; opacity: 0.85; }
@@ -3612,7 +3617,8 @@ h1, h2 { margin-top: 0; font-size: 28px; }
     position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
     background: #7f1d1d; color: white; border-bottom: 2px solid #ef4444;
     padding: 10px 16px; text-align: center; font-size: 15px; font-weight: 600;
-    cursor: pointer; animation: alarmPulse 1s ease-in-out infinite;
+    cursor: pointer;
+    @media (prefers-reduced-motion: no-preference) { animation: alarmPulse 1s ease-in-out infinite; }
 }
 .sound-error {
     margin-top: 8px; font-size: 13px; font-weight: 600; color: #fecaca;
@@ -3648,7 +3654,9 @@ h1, h2 { margin-top: 0; font-size: 28px; }
     0%   { border-color: #2d9e4a; background: rgba(45, 158, 74, 0.15); }
     100% { border-color: #444;    background: transparent; }
 }
-.panel.step-unlocked { animation: unlockFlash 0.8s ease-out forwards; }
+.panel.step-unlocked {
+    @media (prefers-reduced-motion: no-preference) { animation: unlockFlash 0.8s ease-out forwards; }
+}
 
 .purchase-links { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 .purchase-link { color: #60a5fa; font-size: 16px; text-decoration: none; }
@@ -3835,25 +3843,6 @@ h1, h2 { margin-top: 0; font-size: 28px; }
 }
 `;
 // ============================================================
-// BUILD INFO
-// ============================================================
-// Replaced with the real compile timestamp by scripts/validate-recipes.js's postbuild
-// step, right after `tsc` emits dist/file.js. Left as-is (and reported as "dev build")
-// when running straight from source, e.g. under `vite`.
-const BUILD_TIME = '2026-11-14T13:26:37.941Z';
-function formatBuildTime() {
-    const date = new Date(BUILD_TIME);
-    if (isNaN(date.getTime()))
-        return 'dev build';
-    return date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
-}
-function appendBuildFooter(root) {
-    const footer = document.createElement('div');
-    footer.className = 'build-footer';
-    footer.textContent = `Last compiled: ${formatBuildTime()}`;
-    root.appendChild(footer);
-}
-// ============================================================
 // BOOTSTRAP
 // ============================================================
 function bootstrap() {
@@ -3876,6 +3865,112 @@ function bootstrap() {
     else {
         render();
     }
+    registerRecipeAgentTools();
+}
+const RECIPE_SCREENS = ['select', 'shopping', 'cooking', 'nutrition', 'add-ingredient', 'prep', 'plan'];
+function registerRecipeAgentTools() {
+    if (!('modelContext' in document))
+        return;
+    const modelContext = document.modelContext;
+    if (!modelContext)
+        return;
+    const controller = new AbortController();
+    const recipes = () => [...state.recipes.values()].filter(recipe => !recipe.hidden || state.showHidden);
+    const tools = [
+        {
+            name: 'search-recipes',
+            description: 'Find recipes by name. Use when choosing what to cook.',
+            inputSchema: {
+                type: 'object',
+                properties: { query: { type: 'string', description: 'Words from the recipe name. An empty query lists visible recipes.' } },
+            },
+            execute(input) {
+                const query = typeof input?.query === 'string' ? input.query.trim().toLowerCase() : '';
+                return {
+                    recipes: recipes()
+                        .filter(recipe => !query || recipe.name.toLowerCase().includes(query))
+                        .slice(0, 20)
+                        .map(recipe => ({ id: recipe.id, name: recipe.name, group: recipe.group ?? '' })),
+                };
+            },
+            annotations: { readOnlyHint: true },
+        },
+        {
+            name: 'list-selected-recipes',
+            description: 'Read how many servings are currently selected.',
+            inputSchema: { type: 'object', properties: {} },
+            execute() {
+                const counts = new Map();
+                for (const id of state.selectedRecipeIds)
+                    counts.set(id, (counts.get(id) ?? 0) + 1);
+                return {
+                    selected: [...counts].map(([id, servings]) => ({ id, name: state.recipes.get(id)?.name ?? id, servings })),
+                };
+            },
+            annotations: { readOnlyHint: true },
+        },
+        {
+            name: 'add-recipe-serving',
+            description: 'Add one serving of a recipe to the current selection.',
+            inputSchema: {
+                type: 'object',
+                properties: { recipeId: { type: 'string', description: 'Recipe id from search-recipes.' } },
+                required: ['recipeId'],
+            },
+            execute(input) {
+                const recipe = typeof input?.recipeId === 'string' ? state.recipes.get(input.recipeId) : undefined;
+                if (!recipe)
+                    return { error: 'Unknown recipe id. Call search-recipes first.' };
+                state.selectedRecipeIds.push(recipe.id);
+                render();
+                const servings = state.selectedRecipeIds.filter(id => id === recipe.id).length;
+                return { recipeId: recipe.id, name: recipe.name, servings };
+            },
+            annotations: { readOnlyHint: false },
+        },
+        {
+            name: 'remove-recipe-serving',
+            description: 'Remove one serving of a selected recipe.',
+            inputSchema: {
+                type: 'object',
+                properties: { recipeId: { type: 'string', description: 'Recipe id from list-selected-recipes.' } },
+                required: ['recipeId'],
+            },
+            execute(input) {
+                if (typeof input?.recipeId !== 'string')
+                    return { error: 'Pass a recipe id.' };
+                const idx = state.selectedRecipeIds.lastIndexOf(input.recipeId);
+                if (idx === -1)
+                    return { error: 'That recipe has no selected servings.' };
+                state.selectedRecipeIds.splice(idx, 1);
+                render();
+                const servings = state.selectedRecipeIds.filter(id => id === input.recipeId).length;
+                return { recipeId: input.recipeId, servings };
+            },
+            annotations: { readOnlyHint: false },
+        },
+        {
+            name: 'open-recipe-screen',
+            description: 'Show a recipe app screen for the current selection.',
+            inputSchema: {
+                type: 'object',
+                properties: { screen: { type: 'string', enum: [...RECIPE_SCREENS], description: 'Which screen to show.' } },
+                required: ['screen'],
+            },
+            execute(input) {
+                if (typeof input?.screen !== 'string' || !RECIPE_SCREENS.includes(input.screen)) {
+                    return { error: 'Unknown screen.', screens: RECIPE_SCREENS };
+                }
+                navigateTo(input.screen);
+                return { screen: input.screen };
+            },
+            annotations: { readOnlyHint: false },
+        },
+    ];
+    for (const tool of tools) {
+        void Promise.resolve(modelContext.registerTool(tool, { signal: controller.signal })).catch(() => { });
+    }
+    window.addEventListener('pagehide', () => controller.abort(), { once: true });
 }
 // ============================================================
 // STORES
@@ -5041,10 +5136,12 @@ export const i = {
 // RECIPES
 // ============================================================
 registerGroup('Breakfast', [
-    withPlan(createRecipe('blueprint-smoothie', 'Blueprint Smoothie (Nutribullet)', (() => {
+    withPlan(createRecipe('blueprint-smoothie', 'Blueprint Smoothie (Nutribullet, 1 serving)', (() => {
         const mixer = e.bulletMixer();
         const bag = e.siliconeBag('OXO silicone bag');
-        const MACADAMIA_MILK = i.macadamiaNutMilk(1, u.cup);
+        const knife = e.knife();
+        const board = e.cuttingBoard();
+        const MACADAMIA_MILK = i.macadamiaNutMilk(1.25, u.cup);
         const MACADAMIA_NUT = i.macadamiaNut(0.25, u.cup);
         const CHERRY = i.cherry(3, u.unit);
         const BERRY_BLEND = i.antiOxidantBerryBlend(0.5, u.cup);
@@ -5052,70 +5149,121 @@ registerGroup('Breakfast', [
         const SPINACH = i.spinach(0.25, u.cup);
         const CELERY = i.celery(1, u.unit);
         const BANANA = i.banana(1, u.unit);
+        const LEMON = i.lemonJuice(2, u.tbsp);
+        const NIBS = i.cocoaNibs(1, u.tsp);
+        const CHIA = i.chiaSeed(1, u.tsp);
+        const HEMP = i.hempSeed(1, u.tbsp);
+        const VANILLA = i.vanillaExtract(0.25, u.tsp);
+        const FROZEN_PACK = [BANANA, CHERRY, BERRY_BLEND, KALE, SPINACH, CELERY];
         const steps = [];
         const s = (...newSteps) => steps.push(...newSteps);
-        const bagPrep = bag.add([
-            MACADAMIA_NUT,
-            CHERRY,
-            BERRY_BLEND,
-            KALE,
-            SPINACH,
-            CELERY,
-            BANANA,
-        ]);
+        s(info(`One ${bag.name} is one serving of produce only. For the week, repeat the tray-freeze and flat-bag steps once per smoothie. Keep ${formatIngredient(MACADAMIA_NUT)}, ${formatIngredient(NIBS)}, ${formatIngredient(CHIA)}, and ${formatIngredient(HEMP)} out of the freezer, pre-portioned into a small pantry jar, one serving per jar.`));
+        s(prepOnly(`Slice ${formatIngredient(BANANA)}`, {
+            ingredients: [BANANA], equipment: [knife.name, board.name],
+        }));
+        s(prepOnly(`Pat ${formatIngredient(KALE)}, ${formatIngredient(SPINACH)}, and ${formatIngredient(CELERY)} dry`, {
+            ingredients: [KALE, SPINACH, CELERY],
+        }));
+        s(prepOnly(`Chop ${formatIngredient(CELERY)} into about ½-inch pieces`, {
+            ingredients: [CELERY], equipment: [knife.name, board.name],
+        }));
+        s(prepOnly(`Line a sheet pan with parchment and spread ${formatIngredient(BANANA)}, ${formatIngredient(CHERRY)}, and ${formatIngredient(BERRY_BLEND)} in a single layer so the pieces do not touch`, {
+            ingredients: [BANANA, CHERRY, BERRY_BLEND], equipment: ['sheet pan'],
+        }));
+        const freezeTray = Timer.set(1, 'h', 'Freeze the fruit on the tray until the pieces are firm and separate', {
+            equipment: ['sheet pan'], ingredients: [BANANA, CHERRY, BERRY_BLEND],
+        });
+        freezeTray.prep = true;
+        freezeTray.prepOnly = true;
+        s(freezeTray);
+        const bagPrep = bag.add(FROZEN_PACK);
         bagPrep.prep = true;
+        bagPrep.prepOnly = true;
         s(bagPrep);
-        s(mixer.add([
-            MACADAMIA_MILK,
-            i.lemonJuice(2, u.tbsp),
-            i.cocoaNibs(1, u.tsp),
-            i.chiaSeed(1, u.tsp),
-            i.hempSeed(1, u.tbsp),
-            i.vanillaExtract(0.25, u.tsp),
-        ]));
+        s(prepOnly(`Press the air out of the ${bag.name}, seal it, and freeze it flat`, {
+            equipment: [bag.name],
+        }));
+        s(mixer.add([MACADAMIA_MILK, MACADAMIA_NUT, LEMON, NIBS, CHIA, HEMP, VANILLA]));
         s(mixer.mix());
-        s(bag.transfer(mixer, [MACADAMIA_NUT, CHERRY, BERRY_BLEND, KALE, SPINACH, CELERY, BANANA]));
-        s(Timer.set(30, 's', 'Let mixer settle', { equipment: [mixer.name] }));
+        s(instruction(`Snap the flat ${bag.name} apart by hand so the frozen pack breaks into pieces`, {
+            equipment: [bag.name],
+        }));
+        s(bag.transfer(mixer, FROZEN_PACK));
+        s(Timer.set(4, 'm', 'Let the frozen pack sit in the cup (3–5 min)', { equipment: [mixer.name] }));
         s(mixer.mix());
         return steps;
-    })(), undefined, 8), { planMinutes: 8, portable: false }),
+    })(), undefined, 8), { planMinutes: 8, portable: false, prepMinutes: 75 }),
     withPlan(createRecipe('blueprint-smoothie-nuwave', 'Blueprint Smoothie (Nuwave) (x2)', (() => {
         const mixer = e.bulletMixer();
-        const bag = e.siliconeBag('OXO silicone bag');
-        const MACADAMIA_MILK = i.macadamiaNutMilk(2, u.cup);
+        const bagA = e.siliconeBag('OXO silicone bag 1');
+        const bagB = e.siliconeBag('OXO silicone bag 2');
+        const knife = e.knife();
+        const board = e.cuttingBoard();
+        const MACADAMIA_MILK = i.macadamiaNutMilk(2.5, u.cup);
         const MACADAMIA_NUT = i.macadamiaNut(0.5, u.cup);
-        const CHERRY = i.cherry(6, u.unit);
-        const BERRY_BLEND = i.antiOxidantBerryBlend(1, u.cup);
-        const KALE = i.kale(1, u.cup);
-        const SPINACH = i.spinach(0.5, u.cup);
-        const CELERY = i.celery(2, u.unit);
-        const BANANA = i.banana(2, u.unit);
+        const LEMON = i.lemonJuice(4, u.tbsp);
+        const NIBS = i.cocoaNibs(2, u.tsp);
+        const CHIA = i.chiaSeed(2, u.tsp);
+        const HEMP = i.hempSeed(2, u.tbsp);
+        const VANILLA = i.vanillaExtract(0.5, u.tsp);
+        const BANANA_A = i.banana(1, u.unit);
+        const BANANA_B = i.banana(1, u.unit);
+        const CHERRY_A = i.cherry(3, u.unit);
+        const CHERRY_B = i.cherry(3, u.unit);
+        const BERRY_A = i.antiOxidantBerryBlend(0.5, u.cup);
+        const BERRY_B = i.antiOxidantBerryBlend(0.5, u.cup);
+        const KALE_A = i.kale(0.5, u.cup);
+        const KALE_B = i.kale(0.5, u.cup);
+        const SPINACH_A = i.spinach(0.25, u.cup);
+        const SPINACH_B = i.spinach(0.25, u.cup);
+        const CELERY_A = i.celery(1, u.unit);
+        const CELERY_B = i.celery(1, u.unit);
+        const PACK_A = [BANANA_A, CHERRY_A, BERRY_A, KALE_A, SPINACH_A, CELERY_A];
+        const PACK_B = [BANANA_B, CHERRY_B, BERRY_B, KALE_B, SPINACH_B, CELERY_B];
         const steps = [];
         const s = (...newSteps) => steps.push(...newSteps);
-        const bagPrep = bag.add([
-            MACADAMIA_NUT,
-            CHERRY,
-            BERRY_BLEND,
-            KALE,
-            SPINACH,
-            CELERY,
-            BANANA,
-        ]);
-        bagPrep.prep = true;
-        s(bagPrep);
-        s(mixer.add([
-            MACADAMIA_MILK,
-            i.lemonJuice(4, u.tbsp),
-            i.cocoaNibs(2, u.tsp),
-            i.chiaSeed(2, u.tsp),
-            i.hempSeed(2, u.tbsp),
-            i.vanillaExtract(0.5, u.tsp),
-        ]));
-        s(bag.transfer(mixer, [MACADAMIA_NUT, CHERRY, BERRY_BLEND, KALE, SPINACH, CELERY, BANANA]));
+        s(info(`Use two ${bagA.name.replace(' 1', '')}s, one serving of produce in each, not one double bag. For the week, repeat the tray-freeze and flat-bag steps once per smoothie. Keep the macadamia nuts, cocoa nibs, chia, and hemp out of the freezer and pre-portion one serving of them into a small pantry jar.`));
+        s(prepOnly(`Slice ${formatIngredient(BANANA_A)} for each bag`, {
+            ingredients: [BANANA_A, BANANA_B], equipment: [knife.name, board.name],
+        }));
+        s(prepOnly(`Pat ${formatIngredient(KALE_A)}, ${formatIngredient(SPINACH_A)}, and ${formatIngredient(CELERY_A)} dry for each bag`, {
+            ingredients: [KALE_A, KALE_B, SPINACH_A, SPINACH_B, CELERY_A, CELERY_B],
+        }));
+        s(prepOnly(`Chop ${formatIngredient(CELERY_A)} into about ½-inch pieces for each bag`, {
+            ingredients: [CELERY_A, CELERY_B], equipment: [knife.name, board.name],
+        }));
+        s(prepOnly(`Line a sheet pan with parchment and spread ${formatIngredient(BANANA_A)}, ${formatIngredient(CHERRY_A)}, and ${formatIngredient(BERRY_A)} per bag in a single layer so the pieces do not touch`, {
+            ingredients: [BANANA_A, BANANA_B, CHERRY_A, CHERRY_B, BERRY_A, BERRY_B], equipment: ['sheet pan'],
+        }));
+        const freezeTray = Timer.set(1, 'h', 'Freeze the fruit on the tray until the pieces are firm and separate', {
+            equipment: ['sheet pan'],
+            ingredients: [BANANA_A, BANANA_B, CHERRY_A, CHERRY_B, BERRY_A, BERRY_B],
+        });
+        freezeTray.prep = true;
+        freezeTray.prepOnly = true;
+        s(freezeTray);
+        const bagPrepA = bagA.add(PACK_A);
+        bagPrepA.prep = true;
+        bagPrepA.prepOnly = true;
+        s(bagPrepA);
+        const bagPrepB = bagB.add(PACK_B);
+        bagPrepB.prep = true;
+        bagPrepB.prepOnly = true;
+        s(bagPrepB);
+        s(prepOnly(`Press the air out of ${bagA.name} and ${bagB.name}, seal them, and freeze each bag flat`, {
+            equipment: [bagA.name, bagB.name],
+        }));
+        s(mixer.add([MACADAMIA_MILK, MACADAMIA_NUT, LEMON, NIBS, CHIA, HEMP, VANILLA]));
         s(Timer.set(90, 's', 'Use Nut Milk setting', { equipment: [mixer.name], ingredients: [MACADAMIA_MILK] }));
+        s(instruction(`Snap ${bagA.name} and ${bagB.name} apart by hand so each frozen pack breaks into pieces`, {
+            equipment: [bagA.name, bagB.name],
+        }));
+        s(bagA.transfer(mixer, PACK_A));
+        s(bagB.transfer(mixer, PACK_B));
+        s(Timer.set(4, 'm', 'Let the frozen packs sit in the cup (3–5 min)', { equipment: [mixer.name] }));
         s(mixer.mix());
         return steps;
-    })(), undefined, 8), { planMinutes: 8, portable: false }),
+    })(), undefined, 8), { planMinutes: 8, portable: false, prepMinutes: 75 }),
     withPlan(createRecipe('instant-oatmeal-maple-brown-sugar', 'Instant Oatmeal (Maple & Brown Sugar, Lower Sugar)', (() => {
         const bowl = e.bowl();
         const kettle = e.kettle();
@@ -5133,14 +5281,9 @@ registerGroup('Breakfast', [
     })()), { planMinutes: 5, portable: false }),
     withPlan(createRecipe('scrambled-eggs', 'Scrambled Eggs (NuWave, Stainless Steel)', (() => {
         const bowl = e.bowl();
-        const pan = e.nuwavePan();
+        const pan = e.pan();
         const steps = [];
         const s = (...newSteps) => steps.push(...newSteps);
-        s(pan.preheat(300));
-        s(instruction('Flick a wet finger at the pan to test - the droplet should bead and skitter rather than vanish instantly. If it violently sprays everywhere, the pan is too hot - lower the temperature briefly', { equipment: [pan.name] }));
-        const OIL = i.oliveOil(1.5, u.tsp);
-        s(pan.addOil(OIL));
-        s(pan.heatUp(OIL));
         s(bowl.add([
             i.egg(3, u.unit),
             i.seaSalt(0.125, u.tsp),
@@ -5149,6 +5292,11 @@ registerGroup('Breakfast', [
         s(bowl.mix('whisked eggs'));
         const WHISKED = bowl.result;
         const EGG = i.egg(3, u.unit);
+        s(pan.preheat(300));
+        s(instruction('Flick a wet finger at the pan to test - the droplet should bead and skitter rather than vanish instantly. If it violently sprays everywhere, the pan is too hot - lower the temperature briefly', { equipment: [pan.name] }));
+        const OIL = i.oliveOil(1.5, u.tsp);
+        s(pan.addOil(OIL));
+        s(pan.heatUp(OIL));
         s(pan.setTemp(250));
         s(bowl.transfer(pan, [WHISKED]));
         s(Timer.set(18, 's', "Don't touch - let the bottom begin to set", { equipment: [pan.name], ingredients: [WHISKED] }));
@@ -5180,7 +5328,6 @@ registerGroup('Breakfast', [
     })(), undefined, 2), { planMinutes: 2, portable: true }),
     withPlan(createRecipe('shelf-stable-vanilla-chip-chewy-granola-bars', 'Shelf-Stable Vanilla-Chip Chewy Granola Bars (Makes 10)', (() => {
         const bowl = e.bowl();
-        const binderBowl = e.bowl('binder bowl');
         const foodProcessor = e.bulletMixer();
         const pan = e.pan('8×8-inch pan');
         const steps = [];
@@ -5202,23 +5349,27 @@ registerGroup('Breakfast', [
             ingredients: [DATES, WATER],
         });
         s(soakStep);
-        s(binderBowl.combine([PSYLLIUM, PSYLLIUM_WATER], 'let thicken into a binder gel'));
-        const BINDER_GEL = binderBowl.result;
-        BINDER_GEL.rename('Binder Gel');
-        s(foodProcessor.add([
+        s(foodProcessor.add([PSYLLIUM, PSYLLIUM_WATER]));
+        const psylliumTimer = Timer.set(2, 'm', `Let ${formatIngredient(PSYLLIUM)} and ${formatIngredient(PSYLLIUM_WATER)} thicken into a gel in the bullet mixer`, {
+            equipment: [foodProcessor.name],
+            ingredients: [PSYLLIUM, PSYLLIUM_WATER],
+        });
+        s(psylliumTimer);
+        const addStickyBase = foodProcessor.add([
             PEANUT_BUTTER,
             ALLULOSE,
             MAPLE,
             VANILLA,
             SALT,
-        ]));
-        const addStickyBase = foodProcessor.add([DATES, BINDER_GEL]).waitFor(soakStep);
+        ]).waitFor(psylliumTimer);
         s(addStickyBase);
-        s(foodProcessor.mix('sticky date-nut butter paste'));
+        const addDates = foodProcessor.add([DATES]).waitFor(soakStep);
+        s(addDates);
+        foodProcessor.mix('sticky date-nut butter paste');
         const DATE_PASTE = foodProcessor.result;
-        s(instruction(`Process ${formatIngredient(DATE_PASTE)} until you have a smooth, sticky paste`, {
+        s(Timer.set(25, 's', 'Pulse on low for 25 seconds into a sticky date-nut butter paste', {
             equipment: [foodProcessor.name],
-            ingredients: [DATE_PASTE],
+            ingredients: [PSYLLIUM, PSYLLIUM_WATER, PEANUT_BUTTER, ALLULOSE, MAPLE, VANILLA, SALT, DATES, DATE_PASTE],
         }));
         s(bowl.add([
             OATS,
@@ -5442,16 +5593,16 @@ registerGroup('Dinner', [
         const SAUSAGES = i.chickenSausage(5, u.unit);
         const steps = [];
         const s = (...newSteps) => steps.push(...newSteps);
-        s(pan.preheat(350));
+        s(pan.preheat(325));
         s(pan.add([
             i.avocadoOil(1, u.spray),
             [SAUSAGES, 'add in a single layer'],
         ]));
-        s(pan.cook('Sear first side, uncovered - golden crust, no lid', time.minutes(4), 350));
+        s(pan.cook('Sear first side, uncovered - golden crust, no lid', time.minutes(5), 325));
         s(pan.flip());
-        s(pan.cook('Sear second side, uncovered - golden crust, no lid', time.minutes(4), 350));
+        s(pan.cook('Sear second side, uncovered - golden crust, no lid', time.minutes(5), 325));
         s(instruction(`Cover the pan with the lid over ${formatIngredient(SAUSAGES)}`, { equipment: [pan.name], ingredients: [SAUSAGES] }));
-        s(pan.cook('Cook with the lid on until the sausages reach 165°F in the center', time.minutes(3), 350));
+        s(pan.cook('Cook with the lid on until the sausages reach 165°F in the center', time.minutes(6), 325));
         s(Timer.gate('Are the sausages at least 165°F in the center?', 2, 'm', { ingredients: [SAUSAGES], equipment: [pan.name] }));
         s(instruction('Remove the lid and rest the sausages 5 minutes before serving', { equipment: [pan.name], ingredients: [SAUSAGES] }));
         s(Timer.set(5, 'm', 'Rest before serving', { equipment: [pan.name], ingredients: [SAUSAGES] }));
@@ -5594,7 +5745,7 @@ registerGroup('Dinner', [
         return steps;
     })()),
     createRecipe('nuwave-chicken-thighs', 'Nuwave Chicken Thighs (325°F)', (() => {
-        const pan = e.nuwavePan();
+        const pan = e.pan();
         const seasoningBowl = e.bowl('seasoning bowl');
         const THIGHS = i.chickenThigh(2, u.unit);
         const steps = [];
@@ -5663,7 +5814,7 @@ registerGroup('Dinner', [
         return steps;
     })()),
     createRecipe('dr-praegers-cauliflower-burger-nuwave', "Dr. Praeger's Crunchy Cauliflower Burger - NuWave", (() => {
-        const pan = e.nuwavePan();
+        const pan = e.pan();
         const board = e.cuttingBoard();
         const knife = e.knife();
         const BURGER = i.drPraegersCrunchyCauliflowerBurger(2, u.unit);
@@ -5763,7 +5914,7 @@ registerGroup('Dinner', [
         return steps;
     })()), { planMinutes: 7, portable: false }),
     createRecipe('nuwave-pork-shoulder', 'Pork Shoulder (NuWave, 2 lb)', (() => {
-        const pan = e.nuwavePan();
+        const pan = e.pan();
         const PORK = i.porkShoulder(2, u.pound);
         const steps = [];
         const s = (...newSteps) => steps.push(...newSteps);
@@ -5964,7 +6115,7 @@ registerRecipe(withPlan(createRecipe('test-recipe-all-features', 'Test Recipe (A
     const pan = e.pan('test pan');
     const pot = e.pot();
     const oven = e.oven();
-    const nuwave = e.nuwavePan();
+    const nuwave = e.pan();
     const cuttingBoard = e.cuttingBoard();
     const platter = e.platter();
     // requiresDateLabel: true - exercises the auto-inserted put-away/date-label step
@@ -5993,7 +6144,7 @@ registerRecipe(withPlan(createRecipe('test-recipe-all-features', 'Test Recipe (A
         ingredients: [bowl.result, i.blueZonesBasilPestoVeggieBowl(0, u.unit)], equipment: [bowl.name],
     }));
     s(oven.preheat(400)); // fixed 15 min duration - tap 3× to skip
-    s(nuwave.preheat(325)); // NuwaveEquipment override - fixed 45 s duration - tap 3× to skip
+    s(nuwave.preheat(325)); // Pan preheat - 45 s at 325° - tap 3× to skip
     s(pan.add([i.oliveOil(1, u.tbsp)]));
     s(cuttingBoard.slice(MUSHROOM));
     s(pan.add([MUSHROOM]));
